@@ -1,0 +1,33 @@
+{
+    "name": "sensora-library",
+    "version": "0.0.4",
+    "description": "Sensora IoT simplifies the development of IoT solutions and is compatible with various connectivity options such as WiFi, Ethernet, and Cellular networks. It supports many boards like ESP32, ESP8266 and Arduino.",
+    "keywords": "iot, sensors, communication, automation, mqtt, control, provision, web, rule-engine, NB-IoT, wifi, ethernet, gsm, 3g, 4g, gprs, data, bluetooth, ble, esp32, esp8266, web-server, http",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/sensora-io/sensora-library.git"
+    },
+    "authors": [
+      {
+        "name": "Sensora",
+        "url": "https://github.com/sensora-io"
+      },
+      {
+        "name": "tprifti",
+        "url": "https://github.com/tprifti",
+        "maintainer": true
+      }
+    ],
+    "dependencies": {
+      "sstaub/TickTwo": "^4.4.0",
+      "arduino-libraries/ArduinoMqttClient": "^0.1.7",
+      "ArduinoJson": "~6.21.2"
+    },
+    "license": "Apache-2.0",
+    "homepage": "https://docs.sensora.io/library/overview",
+    "frameworks": "arduino",
+    "platforms": [
+      "espressif32",
+      "espressif8266"
+    ]
+  }
