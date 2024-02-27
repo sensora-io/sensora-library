@@ -71,10 +71,10 @@ class EspProvision : public Provision {
         if (!validateWiFiCredentials(ssid, password)) {
           return server.send(400, "application/json", R"json({"status": "ERROR", "message": "Invalid WiFi credentials"})json");
         }
-        SENSORA_LOGD("before init wifi cfg");
         initWiFiConfig(_connConfig.wifi, ssid, password);
-        server.send(200, "application/json", R"json({"status": "OK"})json");
+        _httpProvision = true;
         _state = ProvisionState::ConnectNetwork;
+        server.send(200, "application/json", R"json({"status": "OK"})json");
         return;
       }
       server.send(400, "application/json", R"json({"status": "ERROR", "message": "Invalid configuration"})json");
@@ -144,7 +144,7 @@ class EspProvision : public Provision {
         break;
       case ProvisionState::WaitDeviceCredentials:
         // device credentials may be initialized from HTTP API
-        if (validateDeviceCredentials(deviceConfig.deviceId, deviceConfig.deviceToken)) {
+        if (_httpProvision && validateDeviceCredentials(deviceConfig.deviceId, deviceConfig.deviceToken)) {
           newState = ProvisionState::ConnectMqtt;
         }
         break;
@@ -171,7 +171,7 @@ class EspProvision : public Provision {
   ESP8266WebServer server;
 #endif
   unsigned long _firstNetworkCheck = 0;
-
+  bool _httpProvision = false;
   ProvisionState handleConnectNetwork() {
     _provisionError = CmdError::None;
     if (deviceConfig.connectionType != ConnectionType::WiFi) {
@@ -184,8 +184,6 @@ class EspProvision : public Provision {
       SENSORA_LOGE("failed to connect to ssid '%s'", _connConfig.wifi.ssid);
       _provisionError = CmdError::InvalidNetwCredentials;
       return ProvisionState::NetworkConnFailure;
-    } else {
-      SENSORA_LOGW("wifi begin ok");
     }
     return ProvisionState::WaitNetwConn;
   }

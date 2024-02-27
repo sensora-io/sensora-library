@@ -130,7 +130,7 @@ class SensoraDevice {
     if (strcmp(category, "prop") == 0) {
       Property* prop = propertyList.findById(identifier);
       if (prop == nullptr) {
-        SENSORA_LOGW("property not found..");
+        SENSORA_LOGW("property not found");
         return;
       }
       if (prop->accessMode() == AccessMode::Read) {
@@ -341,7 +341,6 @@ class SensoraDevice {
       }
       if (prop->shouldSync()) {
         p.add(prop->getBuff());
-        SENSORA_LOGW("sending msg with size, propid: '%s', size %d", prop->ID(), p.length());
         snprintf(topic, sizeof(topic), "sc/%s/prop/%s", deviceConfig.deviceId, prop->ID());
         if (_mqtt.publish(topic, p.buffer(), p.length())) {
           prop->onCloudSynced();
