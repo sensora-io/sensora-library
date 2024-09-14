@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2023 Sensora LLC
+ * Copyright 2019-2024 Sensora LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,14 @@
 #ifndef SensoraDevice_h
 #define SensoraDevice_h
 
+#include <Sensora/SensoraConfig.h>
+#include <Sensora/SensoraLogger.h>
+#include <Sensora/SensoraUtil.h>
+#include <Sensora/SensoraPayload.h>
+#include <Sensora/SensoraLink.h>
+#include <Sensora/SensoraProperty.h>
+#include <Sensora/SensoraTransport.h>
+
 enum class DeviceState {
   Boot,
   Provision,
@@ -30,43 +38,43 @@ enum class DeviceState {
   MqttConnFailure,
 
   SubscribeMqtt,
-  ReadCloudState,
   SyncDeviceInfo,
-  SyncPropertyConfig,
+  SyncPropertyInfo,
   SyncDeviceStats,
-  SyncProperties,
+  SyncPropertyState,
 };
 
-void handleMqttMessage(int length);
 template <class Board>
 class SensoraDevice {
  public:
-  SensoraDevice(Client& client) : _state(DeviceState::Boot), _status(DeviceStatus::Boot), _mqtt(client), _isProvision(false), _waitTimer(0), _statsSyncedAt(0), _bootMs(millis()) {}
+  SensoraDevice(Transp& transp) : transp(transp), state(DeviceState::Boot), st(DeviceStatus::Boot), bootedAt(millis()) {
+  }
 
   void setup() {
-    SENSORA_LOGD("initializing device");
-    initConfig();
-    loadConfig();
-    bool isProvision = isProvisionMode();
-
-    if (isProvision) {
-      board.setupProvision(_mqtt);
-      _state = DeviceState::Provision;
+    SENSORA_LOGI("device setup");
+    board.setup();
+    if (board.isProvision()) {
+      SENSORA_LOGI("Running provision mode");
+      board.setupProvision(transp);
+      setState(DeviceState::Provision);
     } else {
-      _state = handleConnectNetwork();
+      SENSORA_LOGI("Running normal mode");
+      setState(DeviceState::ConnectNetwork);
+      printLogo();
     }
   }
 
   void loop() {
-    DeviceState newState = _state;
-    switch (_state) {
+    DeviceState newState = state;
+    switch (state) {
       case DeviceState::Boot:
         break;
       case DeviceState::Provision:
         board.loopProvision();
         break;
       case DeviceState::ConnectNetwork:
-        newState = handleConnectNetwork();
+        board.connectNetwork();
+        newState = DeviceState::WaitNetworkConn;
         break;
       case DeviceState::WaitNetworkConn:
         newState = handleWaitNetworkConn();
@@ -82,109 +90,113 @@ class SensoraDevice {
         newState = handleWaitMqttConn();
         break;
       case DeviceState::MqttConnFailure:
-        newState = handleMqttConnFailure();
+        SENSORA_LOGE("Failed to connect to Sensora Cloud, retrying...");
+        newState = DeviceState::ConnectMqtt;
         break;
       case DeviceState::SubscribeMqtt:
         newState = handleSubscribeMqtt();
         break;
-      case DeviceState::ReadCloudState:
-        newState = handleReadCloudState();
-        break;
       case DeviceState::SyncDeviceInfo:
         newState = handleSyncDeviceInfo();
         break;
-      case DeviceState::SyncPropertyConfig:
-        newState = handleSyncPropertyConfig();
+      case DeviceState::SyncPropertyInfo:
+        newState = handleSyncPropertyInfo();
         break;
       case DeviceState::SyncDeviceStats:
         newState = handleSyncDeviceStats();
         break;
-      case DeviceState::SyncProperties:
-        newState = handleSyncProperties();
+      case DeviceState::SyncPropertyState:
+        newState = handleSyncPropertyState();
         break;
       default:
         break;
     }
-    _state = newState;
-    _mqtt.client().poll();
+    setState(newState);
+    if (transp.connected()) {
+      transp.mqtt().poll();
+    }
   }
 
-  DeviceStatus status() { return _status; }
-  void setStatus(DeviceStatus s) { _status = s; }
-  SensoraMqtt& mqtt() { return _mqtt; }
+  DeviceStatus status() { return st; }
 
-  void onMqttMessage(int length) {
+  void handleMessage(int length) {
     uint8_t bytes[length];
-    String topic = _mqtt.client().messageTopic();
+    String topic = transp.mqtt().messageTopic();
     char deviceId[SENSORA_MAX_DEVICE_ID_LEN];
-    char category[SENSORA_MAX_PROPERTY_ID_LEN];
-    char identifier[SENSORA_MAX_PROPERTY_ID_LEN];
     for (int i = 0; i < length; i++) {
-      bytes[i] = _mqtt.client().read();
+      bytes[i] = transp.mqtt().read();
     }
-    parseTopic(topic.c_str(), deviceId, category, identifier);
-    if (strcmp(deviceId, deviceConfig.deviceId)) {
+
+    extractDeviceId(topic.c_str(), deviceId);
+    if (strcmp(deviceId, deviceConfig.deviceId) != 0) {
+      SENSORA_LOGW("invalid device id");
       return;
     }
-
-    if (strcmp(category, "prop") == 0) {
-      Property* prop = propertyList.findById(identifier);
-      if (prop == nullptr) {
-        SENSORA_LOGW("property not found");
-        return;
-      }
-      if (prop->accessMode() == AccessMode::Read) {
-        return;
-      }
-      prop->onMessage(bytes, length);
+    char propertyId[SENSORA_MAX_PROPERTY_ID_LEN];
+    if (!extractPayload(bytes, length, "id", propertyId, sizeof(propertyId))) {
+      SENSORA_LOGW("property id not found in payload");
+      return;
     }
+    char propertyValue[PROPERTY_BUFFER_SIZE];
+    if (!extractPayload(bytes, length, "value", propertyValue, sizeof(propertyValue))) {
+      SENSORA_LOGW("property value not found in payload");
+      return;
+    }
+    Property* prop = propertyList.findById(propertyId);
+    if (prop == nullptr) {
+      SENSORA_LOGW("property not found");
+      return;
+    }
+    if (prop->getAccessMode() == AccessMode::Read) {
+      SENSORA_LOGW("cannot update property '%s' because access mode is read only", prop->ID());
+      return;
+    }
+    prop->onMessage(propertyValue, strlen(propertyValue));
+  }
+
+  void addAttribute(const char* key, const char* value) {
   }
 
  protected:
-  DeviceConfig _deviceConfig;
+  Board board;
+  Transp& transp;
 
  private:
-  Board board;
-  DeviceState _state;
-  DeviceStatus _status;
-  SensoraMqtt _mqtt;
-  bool _isProvision;
-  unsigned long _waitTimer;
-  unsigned long _statsSyncedAt;
-  unsigned long _bootMs;
+  DeviceState state;
+  DeviceStatus st;
+  void setState(DeviceState s) { state = s; }
+  void setStatus(DeviceStatus s) { st = s; }
+  unsigned long waitTimer;
+  unsigned long bootedAt;
+  unsigned long statSyncedAt;
 
   uint32_t uptimeSeconds() const {
-    return (millis() - _bootMs) / 1000ULL;
-  }
-
-  DeviceState handleConnectNetwork() {
-    board.connectNetwork();
-    return DeviceState::WaitNetworkConn;
+    return (millis() - bootedAt) / 1000ULL;
   }
 
   DeviceState handleWaitNetworkConn() {
-    if (_waitTimer == 0) {
-      _waitTimer = millis();
+    if (waitTimer == 0) {
+      waitTimer = millis();
     }
-    if (board.networkConnected()) {
-      _waitTimer = 0;
+    if (board.isNetworkConnected()) {
+      waitTimer = 0;
       return DeviceState::ConnectMqtt;
     }
-    if (millis() - _waitTimer >= 10000LU) {
-      _waitTimer = 0;
+    if (millis() - waitTimer >= 10000LU) {
+      waitTimer = 0;
       return DeviceState::NetworkConnFailure;
     }
     return DeviceState::WaitNetworkConn;
   }
 
   DeviceState handleConnectMqtt() {
-    if (_mqtt.connected()) {
+    if (transp.connected()) {
       setStatus(DeviceStatus::Online);
       return DeviceState::SubscribeMqtt;
     }
-    _mqtt.onMessage(handleMqttMessage);
-    _mqtt.setup();
-    if (_mqtt.connect()) {
+    transp.mqtt().onMessage(onMessage);
+    transp.setup();
+    if (transp.connect()) {
       setStatus(DeviceStatus::Online);
       return DeviceState::SubscribeMqtt;
     }
@@ -192,170 +204,122 @@ class SensoraDevice {
   }
 
   DeviceState handleWaitMqttConn() {
-    if (_waitTimer == 0) {
-      _waitTimer = millis();
+    if (waitTimer == 0) {
+      waitTimer = millis();
     }
 
-    if (_mqtt.connected()) {
+    if (transp.connected()) {
       return DeviceState::SubscribeMqtt;
     }
-    if (millis() - _waitTimer >= 10000LU) {
+    if (millis() - waitTimer >= 10000LU) {
       return DeviceState::MqttConnFailure;
     }
     return DeviceState::WaitMqttConn;
   }
 
-  DeviceState handleMqttConnFailure() {
-    SENSORA_LOGE("Failed to connect to Sensora Cloud, retrying...");
-    return DeviceState::ConnectMqtt;
-  }
-
   DeviceState handleSubscribeMqtt() {
-    if (!_mqtt.connected()) {
+    if (!transp.connected()) {
       return DeviceState::ConnectMqtt;
     }
-    char topic[44];
-    snprintf(topic, sizeof(topic), "sc/%s/+/+/set", deviceConfig.deviceId);
+    char topic[45];
+    snprintf(topic, sizeof(topic), "sc/%s/msg/recv", deviceConfig.deviceId);
     SENSORA_LOGI("subscribing to topic '%s'", topic);
-    if (!_mqtt.subscribe(topic)) {
+    if (!transp.subscribe(topic)) {
       SENSORA_LOGE("Failed to subscribe to topic '%s'", topic);
       return DeviceState::ConnectNetwork;
     }
     SENSORA_LOGI("successfully subscribed to topic '%s'", topic);
-    return DeviceState::ReadCloudState;
-  }
-
-  DeviceState handleReadCloudState() {
-    char topic[43];
-    snprintf(topic, sizeof(topic), "sc/%s/action", deviceConfig.deviceId);
-    SensoraPayload p;
-    p.add("readPropsValue");
-    if (!_mqtt.publish(topic, p.buffer(), p.length())) {
-      return DeviceState::ConnectNetwork;
-    }
     return DeviceState::SyncDeviceInfo;
   }
 
   DeviceState handleSyncDeviceInfo() {
-    if (!_mqtt.connected()) {
+    if (!transp.connected()) {
       return DeviceState::ConnectMqtt;
     }
-    char topic[38];
-    snprintf(topic, sizeof(topic), "sc/%s", deviceConfig.deviceId);
-
-    char ipStr[16];
-    IPAddress ip = board.getLocalIP();
-    snprintf(ipStr, 16, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    char ids[(propertyList.count() * SENSORA_MAX_PROPERTY_ID_LEN) + propertyList.count()];
-    propertyList.getIdentifiers(ids, sizeof(ids));
-    SensoraPayload p;
-    board.readInfo(p);
-    p.add("status=");
-    p.add(static_cast<uint8_t>(status()));
-    p.add(";");
-    p.add("ip=");
-    p.add(ipStr);
-    p.add(";");
-    p.add("fwver=");
-    p.add("1.0.0;");
-    p.add("props=");
-    p.add(ids);
-
-    if (!_mqtt.publish(topic, p.buffer(), p.length())) {
+    char topic[45];
+    snprintf(topic, sizeof(topic), "sc/%s/dev/info", deviceConfig.deviceId);
+    SensoraPayload payload;
+    payload.add("fw_version", "1.0.0");
+    board.readInfo(payload);
+    if (!transp.publish(topic, payload.buffer(), payload.length())) {
+      SENSORA_LOGE("failed to sync device info");
       return DeviceState::ConnectNetwork;
     }
-    return DeviceState::SyncPropertyConfig;
+    return DeviceState::SyncPropertyInfo;
   }
 
-  DeviceState handleSyncPropertyConfig() {
-    if (!_mqtt.connected()) {
+  DeviceState handleSyncPropertyInfo() {
+    if (!transp.connected()) {
       return DeviceState::ConnectMqtt;
     }
-    char topic[81];
-    SensoraPayload p;
+    char topic[46];
+    snprintf(topic, sizeof(topic), "sc/%s/prop/info", deviceConfig.deviceId);
+    SensoraPayload payload;
     for (Property* prop : propertyList) {
       if (prop == nullptr) {
         continue;
       }
-      snprintf(topic, sizeof(topic), "sc/%s/prop/%s/cfg", deviceConfig.deviceId, prop->ID());
-      p.add("dt=");
-      p.add(static_cast<uint8_t>(prop->dataType()));
-      p.add(";");
-      p.add("am=");
-      p.add(static_cast<uint8_t>(prop->accessMode()));
-      p.add(";");
-      p.add("name=");
-      p.add(prop->name());
-      p.add(";");
-      p.add("nid=");
-      p.add(prop->nodeId());
-
-      if (!_mqtt.publish(topic, p.buffer(), p.length())) {
-        p.clear();
-        memset(topic, 0, sizeof(topic));
+      payload.add("id", prop->ID());
+      payload.add("nodeId", prop->nodeId());
+      payload.add("dataType", static_cast<uint8_t>(prop->getDataType()));
+      payload.add("accessMode", static_cast<uint8_t>(prop->getAccessMode()));
+      payload.add("syncStrategy", static_cast<uint8_t>(prop->getSyncStrategy()));
+      if (!transp.publish(topic, payload.buffer(), payload.length())) {
         return DeviceState::ConnectNetwork;
       }
-      p.clear();
-      memset(topic, 0, sizeof(topic));
+      payload.clear();
     }
     return DeviceState::SyncDeviceStats;
   }
 
   DeviceState handleSyncDeviceStats() {
-    if (!_mqtt.connected()) {
+    if (!transp.connected()) {
       return DeviceState::ConnectMqtt;
     }
-    SENSORA_LOGI("sync device stats");
-    char topic[38];
-    snprintf(topic, sizeof(topic), "sc/%s", deviceConfig.deviceId);
-    SensoraPayload p;
-    board.readStats(p);
-    p.add("status=");
-    p.add(static_cast<uint8_t>(status()));
-    p.add(";");
-    p.add("uptime=");
-    p.add(uptimeSeconds());
+    char topic[45];
+    snprintf(topic, sizeof(topic), "sc/%s/dev/info", deviceConfig.deviceId);
 
-    if (!_mqtt.publish(topic, p.buffer(), p.length())) {
-      p.clear();
-      memset(topic, 0, sizeof(topic));
-      SENSORA_LOGW("failed to sync device stats");
+    SensoraPayload payload;
+    payload.add("status", static_cast<uint8_t>(status()));
+    payload.add("uptime", uptimeSeconds());
+    board.readStats(payload);
+    if (!transp.publish(topic, payload.buffer(), payload.length())) {
       return DeviceState::ConnectNetwork;
     }
-    p.clear();
-    memset(topic, 0, sizeof(topic));
-    _statsSyncedAt = millis();
-    return DeviceState::SyncProperties;
+    statSyncedAt = millis();
+    return DeviceState::SyncPropertyState;
   }
 
-  DeviceState handleSyncProperties() {
-    if (!_mqtt.connected()) {
+  DeviceState handleSyncPropertyState() {
+    if (!transp.connected()) {
       return DeviceState::ConnectMqtt;
     }
-
-    char topic[74];
-    SensoraPayload p;
+    char topic[44];
+    snprintf(topic, sizeof(topic), "sc/%s/msg/pub", deviceConfig.deviceId);
+    SensoraPayload payload;
     for (Property* prop : propertyList) {
       if (prop == nullptr) {
         continue;
       }
       if (prop->shouldSync()) {
-        p.add(prop->getBuff());
-        snprintf(topic, sizeof(topic), "sc/%s/prop/%s", deviceConfig.deviceId, prop->ID());
-        if (_mqtt.publish(topic, p.buffer(), p.length())) {
+        payload.add("id", prop->ID());
+        payload.add("value", prop->getBuff());
+        if (transp.publish(topic, payload.buffer(), payload.length())) {
           prop->onCloudSynced();
         } else {
           SENSORA_LOGE("failed to sync property state, id '%s'", prop->ID());
           prop->onCloudSyncFailed();
         }
       }
-      p.clear();
-      memset(topic, 0, sizeof(topic));
+      payload.clear();
     }
-    if (millis() - _statsSyncedAt >= DEVICE_STATS_SYNC_INTERVAL_MS) {
+    if (millis() - statSyncedAt >= DEVICE_STATS_SYNC_INTERVAL_MS) {
       return DeviceState::SyncDeviceStats;
     }
-    return DeviceState::SyncProperties;
+    return DeviceState::SyncPropertyState;
   }
+
+  static void onMessage(int len);
 };
+
 #endif

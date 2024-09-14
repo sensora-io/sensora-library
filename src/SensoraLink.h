@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2023 Sensora LLC
+ * Copyright 2019-2024 Sensora LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ class SensoraLink {
       resetBuff();
       return false;
     }
-    // SENSORA_LOGV("SensoraLink readByte: 0x%02X , buffPos %d, sof@buffPoss 0x%02X", b, buffPos, sof[buffPos]);
+    SENSORA_LOGV("SensoraLink readByte: 0x%02X , buffPos %d, sof@buffPoss 0x%02X", b, buffPos, sof[buffPos]);
     buff[buffPos++] = b;
     if (b == 0x99) {
       return false;
