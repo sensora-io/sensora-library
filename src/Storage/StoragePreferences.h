@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2023 Sensora LLC
+ * Copyright 2019-2024 Sensora LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,33 +14,30 @@
  * limitations under the License.
  */
 
-#ifndef Sensora_h
-#define Sensora_h
+#ifndef StoragePreferences_h
+#define StoragePreferences_h
 
-#include <SensoraLogger.h>
-#include <Config.h>
-#include <SensoraDefinitions.h>
-#include <Util.h>
-#include <SensoraPayload.h>
-#include <SensoraMqtt.h>
-#include <Provision.h>
-#include <SensoraDevice.h>
+#include <Preferences.h>
 
-template <class Board>
-class SensoraClass {
- public:
-  SensoraClass(SensoraDevice<Board>& device) : device(device) {}
+Preferences preferences;
 
-  void setup() {
-    device.setup();
-  }
+void storageBegin() {
+  preferences.begin("sensora", false);
+}
 
-  void loop() {
-    device.loop();
-  }
+void storageEnd() {
+  preferences.end();
+}
 
- private:
-  SensoraDevice<Board>& device;
-};
+template<typename T>
+bool readConfig(const char* key, T& config) {
+  size_t readBytes = preferences.getBytes(key, &config, sizeof(T));
+  return readBytes == sizeof(T);
+}
+
+template<typename T>
+void writeConfig(const char* key, const T& config) {
+  preferences.putBytes(key, &config, sizeof(T));
+}
 
 #endif

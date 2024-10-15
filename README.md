@@ -22,7 +22,7 @@ To install Sensora library, we suggest using  **[PlatformIO](https://platformio.
 ```
 [env:myenv]
 lib_deps =
-  sensora/sensora-library
+  https://github.com/sensora-io/sensora-library
 ```
 
 -   Build the project and PlatformIO will automatically install dependencies.
@@ -35,8 +35,8 @@ Here’s a simple example to get you started:
 #include <Arduino.h>
 #include <SensoraEsp.h>
 
-Property temperatureProperty("temperature", "Room Temperature");
-Property humidityProperty("humidity", "Room Humidity");
+Property temperatureProperty("temperature");
+Property humidityProperty("humidity");
 
 unsigned long lastRead = 0;
 int roomTemperature = 20;
