@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include <SensoraEsp.h>
+#include <EspWifi.h>
 
-Property led("led", "Room LED");
+Property led("led");
 void handleLedChange(PropertyValue& val) {
   if (val.Bool()) {
     SENSORA_LOGI("should turn ON");
@@ -13,7 +13,6 @@ void handleLedChange(PropertyValue& val) {
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
   led.setDataType(DataType::Boolean).setAccessMode(AccessMode::Write).subscribe(handleLedChange);
   pinMode(LED_BUILTIN, OUTPUT);
   Sensora.setup();

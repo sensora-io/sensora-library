@@ -1,8 +1,8 @@
 #include <Arduino.h>
-#include <SensoraEsp.h>
+#include <EspWifi.h>
 
-Property temperatureProperty("temperature", "Room Temperature");
-Property humidityProperty("humidity", "Room Humidity");
+Property temperatureProperty("temperature");
+Property humidityProperty("humidity");
 
 void setup() {
   Serial.begin(115200);

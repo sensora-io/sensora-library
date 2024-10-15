@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2023 Sensora LLC
+ * Copyright 2019-2024 Sensora LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef Util_h
-#define Util_h
+#ifndef SensoraUtil_h
+#define SensoraUtil_h
 
-void initDeviceCredentials(const char* deviceId, const char* deviceToken) {
-  SENSORA_LOGD("init_device_credentials deviceId '%s'", deviceId);
-  copyString(deviceId, deviceConfig.deviceId);
-  copyString(deviceToken, deviceConfig.deviceToken);
+template <typename T, size_t N>
+void copyString(const char* source, T (&dest)[N]) {
+  strncpy(dest, source, N);
+  dest[N - 1] = '\0';
 }
 
 bool validateDeviceCredentials(const char* deviceId, const char* deviceToken) {
@@ -33,12 +33,6 @@ bool validateDeviceCredentials(const char* deviceId, const char* deviceToken) {
     return false;
   }
   return true;
-}
-
-void initWiFiConfig(WiFiConfig& cfg, const char* ssid, const char* password) {
-  deviceConfig.connectionType = ConnectionType::WiFi;
-  copyString(ssid, cfg.ssid);
-  copyString(password, cfg.password);
 }
 
 bool validateWiFiCredentials(const char* ssid, const char* password) {
@@ -58,25 +52,7 @@ bool validateWiFiCredentials(const char* ssid, const char* password) {
   return true;
 }
 
-bool isProvisionMode() {
-  if (!validateDeviceCredentials(deviceConfig.deviceId, deviceConfig.deviceToken)) {
-    return true;
-  }
-
-  return false;
-  switch (deviceConfig.connectionType) {
-    case ConnectionType::WiFi: {
-      WiFiConfig wifi;
-      readConfig(NETWORK_CONFIG_KEY, wifi);
-      return !validateWiFiCredentials(wifi.ssid, wifi.password);
-    }
-    default:
-      SENSORA_LOGE("Connection %d is not supported yet", deviceConfig.connectionType);
-      return true;
-  }
-}
-
-void parseTopic(const char* topic, char* deviceId, char* category, char* identifier) {
+void extractDeviceId(const char* topic, char* deviceId) {
   SENSORA_LOGV("parse topic '%s'", topic);
   const char* cursor = topic + 3;
   size_t length = 0;
@@ -89,26 +65,42 @@ void parseTopic(const char* topic, char* deviceId, char* category, char* identif
   length = slashPtr - cursor;
   memcpy(deviceId, cursor, length);
   deviceId[length] = '\0';
-  cursor = slashPtr + 1;
-
-  slashPtr = strchr(cursor, '/');
-  if (slashPtr == NULL) {
-    SENSORA_LOGE("Cannot extract category from topic");
-    return;
-  }
-  length = slashPtr - cursor;
-  memcpy(category, cursor, length);
-  category[length] = '\0';
-  cursor = slashPtr + 1;
-
-  slashPtr = strchr(cursor, '/');
-  if(slashPtr == NULL) {
-    SENSORA_LOGE("Cannot extract identifier from topic");
-    return;
-  }
-  length = slashPtr - cursor;
-  memcpy(identifier, cursor, length);
-  identifier[length] = '\0';
 }
 
+bool extractPayload(const uint8_t* bytes, int length, const char* key, char* buff, size_t bufLen) {
+  int keyLen = strlen(key);
+  int i = 0;
+  while (i < length) {
+    if (i + keyLen + 1 < length && memcmp(bytes + i, key, keyLen) == 0 && bytes[i + keyLen] == '=') {
+      int j = 0;
+      i += keyLen + 1;
+      while (i < length && bytes[i] != ';' && j < bufLen - 1) {
+        buff[j++] = bytes[i++];
+      }
+      buff[j] = '\0';
+      return true;
+    }
+
+    while (i < length && bytes[i] != ';') {
+      i++;
+    }
+    i++;
+  }
+
+  buff[0] = '\0';
+  return false;
+}
+
+void printLogo() {
+  SENSORA_LOGW("*******************************************************");
+  SENSORA_LOGW("*  ____                                               *");
+  SENSORA_LOGW("* / ___|    ___   _ __    ___    ___    _ __    __ _  *");
+  SENSORA_LOGW("* \\___ \\   / _ \\ | '_ \\  / __|  / _ \\  | '__|  / _` | *");
+  SENSORA_LOGW("*  ___) | |  __/ | | | | \\__ \\ | (_) | | |    | (_| | *");
+  SENSORA_LOGW("* |____/   \\___| |_| |_| |___/  \\___/  |_|     \\__,_| *");
+  SENSORA_LOGW("*                                                     *");
+  SENSORA_LOGW("*    Go to https://docs.sensora.io to get started!    *");
+  SENSORA_LOGW("*                                                     *");
+  SENSORA_LOGW("*******************************************************");
+}
 #endif

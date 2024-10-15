@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include <SensoraEsp.h>
+#include <EspWifi.h>
 
-Property led("led", "Room LED");
+Property led("led");
 
 int c = 1;
 void handleLedChange(PropertyValue& val) {
