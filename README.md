@@ -22,7 +22,7 @@ To install Sensora library, we suggest using  **[PlatformIO](https://platformio.
 ```
 [env:myenv]
 lib_deps =
-  https://github.com/sensora-io/sensora-library#dev
+  https://github.com/sensora-io/sensora-library
 ```
 
 -   Build the project and PlatformIO will automatically install dependencies.
