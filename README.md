@@ -33,7 +33,7 @@ Here’s a simple example to get you started:
 
 ```cpp
 #include <Arduino.h>
-#include <SensoraEsp.h>
+#include <EspWifi.h>
 
 Property temperatureProperty("temperature", "Room Temperature");
 Property humidityProperty("humidity", "Room Humidity");
