@@ -17,13 +17,13 @@
 #ifndef SensoraDevice_h
 #define SensoraDevice_h
 
-#include <Sensora/SensoraConfig.h>
-#include <Sensora/SensoraLogger.h>
-#include <Sensora/SensoraUtil.h>
-#include <Sensora/SensoraPayload.h>
-#include <Sensora/SensoraLink.h>
-#include <Sensora/SensoraProperty.h>
-#include <Sensora/SensoraTransport.h>
+#include <SensoraConfig.h>
+#include <SensoraLogger.h>
+#include <SensoraUtil.h>
+#include <SensoraPayload.h>
+#include <SensoraLink.h>
+#include <SensoraProperty.h>
+#include <SensoraTransport.h>
 
 enum class DeviceState {
   Boot,

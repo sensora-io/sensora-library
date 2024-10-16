@@ -18,9 +18,9 @@
 #define EspWifi_h
 
 #include <WiFi.h>
-#include <Sensora/SensoraDevice.h>
-#include <Sensora/Storage/StoragePreferences.h>
-#include <Sensora/Provision/SensoraProvision.h>
+#include <SensoraDevice.h>
+#include <Storage/StoragePreferences.h>
+#include <Provision/SensoraProvision.h>
 
 class EspProvision : public SerialProvision {
  public:

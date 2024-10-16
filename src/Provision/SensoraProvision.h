@@ -17,7 +17,7 @@
 #ifndef SensoraProvision_h
 #define SensoraProvision_h
 
-#include <Sensora/SensoraLink.h>
+#include <SensoraLink.h>
 
 enum class ProvisionState {
   WaitNetworkConfig = 1,
